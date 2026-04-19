@@ -1,4 +1,4 @@
-package com.rainbowforest.settingservice.config;
+package com.rainbowforest.setting_service.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
