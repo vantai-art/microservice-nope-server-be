@@ -1,7 +1,6 @@
-package com.rainbowforest.settingservice.service;
+package com.rainbowforest.setting_service.service;
 
-import com.rainbowforest.settingservice.entity.AppSetting.SettingScope;
-
+import com.rainbowforest.setting_service.entity.AppSetting.SettingScope;
 import java.util.Map;
 
 public interface SettingService {

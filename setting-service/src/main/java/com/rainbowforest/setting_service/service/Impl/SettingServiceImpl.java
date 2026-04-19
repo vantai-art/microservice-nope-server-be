@@ -1,12 +1,13 @@
-package com.rainbowforest.settingservice.service;
+package com.rainbowforest.setting_service.service.Impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.rainbowforest.settingservice.entity.AppSetting;
-import com.rainbowforest.settingservice.entity.AppSetting.SettingScope;
-import com.rainbowforest.settingservice.repository.AppSettingRepository;
+import com.rainbowforest.setting_service.entity.AppSetting;
+import com.rainbowforest.setting_service.entity.AppSetting.SettingScope;
+import com.rainbowforest.setting_service.repository.AppSettingRepository;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import com.rainbowforest.setting_service.service.SettingService;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;

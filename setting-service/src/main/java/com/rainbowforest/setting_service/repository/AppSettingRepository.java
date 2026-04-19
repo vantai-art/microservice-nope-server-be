@@ -1,7 +1,7 @@
-package com.rainbowforest.settingservice.repository;
+package com.rainbowforest.setting_service.repository;
 
-import com.rainbowforest.settingservice.entity.AppSetting;
-import com.rainbowforest.settingservice.entity.AppSetting.SettingScope;
+import com.rainbowforest.setting_service.entity.AppSetting;
+import com.rainbowforest.setting_service.entity.AppSetting.SettingScope;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;

@@ -1,4 +1,4 @@
-package com.rainbowforest.settingservice.entity;
+package com.rainbowforest.setting_service.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;

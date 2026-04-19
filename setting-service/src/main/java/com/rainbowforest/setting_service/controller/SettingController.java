@@ -1,8 +1,8 @@
-package com.rainbowforest.settingservice.controller;
+package com.rainbowforest.setting_service.controller;
 
-import com.rainbowforest.settingservice.dto.SettingDto;
-import com.rainbowforest.settingservice.entity.AppSetting.SettingScope;
-import com.rainbowforest.settingservice.service.SettingService;
+import com.rainbowforest.setting_service.dto.SettingDto;
+import com.rainbowforest.setting_service.entity.AppSetting.SettingScope;
+import com.rainbowforest.setting_service.service.SettingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

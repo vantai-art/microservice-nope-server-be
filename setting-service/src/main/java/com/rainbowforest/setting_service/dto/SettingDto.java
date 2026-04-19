@@ -1,4 +1,4 @@
-package com.rainbowforest.settingservice.dto;
+package com.rainbowforest.setting_service.dto;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;

@@ -1,4 +1,4 @@
-package com.yourcompany.setting_service;
+package com.rainbowforest.setting_service;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
