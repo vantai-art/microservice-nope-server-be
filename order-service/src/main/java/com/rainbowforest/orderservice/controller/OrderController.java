@@ -1,11 +1,14 @@
 package com.rainbowforest.orderservice.controller;
 
+import com.rainbowforest.orderservice.domain.DiningTable;
 import com.rainbowforest.orderservice.domain.Item;
 import com.rainbowforest.orderservice.domain.Order;
 import com.rainbowforest.orderservice.domain.Product;
 import com.rainbowforest.orderservice.domain.User;
 import com.rainbowforest.orderservice.feignclient.UserClient;
 import com.rainbowforest.orderservice.http.header.HeaderGenerator;
+import com.rainbowforest.orderservice.http.request.TableOrderRequest;
+import com.rainbowforest.orderservice.repository.DiningTableRepository;
 import com.rainbowforest.orderservice.service.CartService;
 import com.rainbowforest.orderservice.service.OrderService;
 import com.rainbowforest.orderservice.utilities.OrderUtilities;
@@ -13,10 +16,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -34,6 +39,9 @@ public class OrderController {
 
     @Autowired
     private HeaderGenerator headerGenerator;
+
+    @Autowired
+    private DiningTableRepository tableRepository;
 
     // ==========================================
     // GET /order → lấy tất cả đơn hàng (admin)
@@ -72,7 +80,7 @@ public class OrderController {
     }
 
     // ==========================================
-    // POST /order/{userId} → đặt hàng qua Cookie (giữ nguyên cho tương thích)
+    // POST /order/{userId} → đặt hàng qua Cookie
     // ==========================================
     @PostMapping(value = "/order/{userId}")
     public ResponseEntity<Order> saveOrder(
@@ -106,12 +114,6 @@ public class OrderController {
 
     // ==========================================
     // POST /order/{userId}/direct → đặt hàng từ FE gửi cart trong body
-    // FIX: Browser chặn set header "Cookie" → dùng endpoint này thay thế
-    //
-    // Body: [
-    // { "productId": 1, "productName": "Cà phê", "price": 35000, "quantity": 2 },
-    // ...
-    // ]
     // ==========================================
     @PostMapping(value = "/order/{userId}/direct")
     public ResponseEntity<Order> saveOrderDirect(
@@ -129,38 +131,7 @@ public class OrderController {
         }
 
         try {
-            // Convert cart items từ FE sang List<Item>
-            List<Item> items = new ArrayList<>();
-            for (Map<String, Object> cartItem : cartItems) {
-                Product product = new Product();
-
-                // productId
-                Object pidObj = cartItem.get("productId");
-                if (pidObj != null) {
-                    product.setId(Long.parseLong(pidObj.toString()));
-                }
-
-                // productName
-                Object nameObj = cartItem.get("productName");
-                product.setProductName(nameObj != null ? nameObj.toString() : "");
-
-                // price
-                Object priceObj = cartItem.get("price");
-                BigDecimal price = priceObj != null
-                        ? new BigDecimal(priceObj.toString())
-                        : BigDecimal.ZERO;
-                product.setPrice(price);
-
-                // quantity
-                Object qtyObj = cartItem.get("quantity");
-                int qty = qtyObj != null ? Integer.parseInt(qtyObj.toString()) : 1;
-
-                BigDecimal subTotal = price.multiply(BigDecimal.valueOf(qty));
-
-                Item item = new Item(qty, product, subTotal);
-                items.add(item);
-            }
-
+            List<Item> items = parseCartItems(cartItems);
             Order order = createOrder(items, user);
             orderService.saveOrder(order);
 
@@ -168,6 +139,104 @@ public class OrderController {
                     order,
                     headerGenerator.getHeadersForSuccessPostMethod(request, order.getId()),
                     HttpStatus.CREATED);
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return new ResponseEntity<>(headerGenerator.getHeadersForError(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // ==========================================
+    // POST /order/table → nhân viên tạo order cho bàn
+    // Body: { "tableId": 3, "customerName": "Nguyễn Văn A",
+    // "items": [{ "productId":1, "productName":"Cà phê", "price":35000,
+    // "quantity":2 }] }
+    // ==========================================
+    @PostMapping(value = "/order/table")
+    public ResponseEntity<Order> saveTableOrder(
+            @RequestBody TableOrderRequest tableRequest,
+            HttpServletRequest httpRequest) {
+
+        if (tableRequest.getTableId() == null
+                || tableRequest.getItems() == null
+                || tableRequest.getItems().isEmpty()) {
+            return new ResponseEntity<>(headerGenerator.getHeadersForError(), HttpStatus.BAD_REQUEST);
+        }
+
+        DiningTable table = tableRepository.findById(tableRequest.getTableId()).orElse(null);
+        if (table == null) {
+            return new ResponseEntity<>(headerGenerator.getHeadersForError(), HttpStatus.NOT_FOUND);
+        }
+
+        try {
+            List<Item> items = parseCartItems(tableRequest.getItems());
+
+            Order order = new Order();
+            order.setItems(items);
+            order.setDiningTable(table);
+            order.setCustomerName(tableRequest.getCustomerName());
+            order.setTotal(OrderUtilities.countTotalPrice(items));
+            order.setOrderedDate(LocalDate.now());
+            order.setStatus("PAYMENT_EXPECTED");
+
+            orderService.saveOrder(order);
+
+            // Đánh dấu bàn đang bận
+            table.setStatus("OCCUPIED");
+            tableRepository.save(table);
+
+            return new ResponseEntity<>(
+                    order,
+                    headerGenerator.getHeadersForSuccessPostMethod(httpRequest, order.getId()),
+                    HttpStatus.CREATED);
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return new ResponseEntity<>(headerGenerator.getHeadersForError(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // ==========================================
+    // POST /order/{id}/checkout
+    // Thanh toán xong → trả bàn về FREE, trả bill để in
+    // ==========================================
+    @PostMapping(value = "/order/{id}/checkout")
+    public ResponseEntity<Map<String, Object>> checkoutOrder(@PathVariable("id") Long id) {
+        Order order = orderService.getOrderById(id);
+        if (order == null) {
+            return new ResponseEntity<>(headerGenerator.getHeadersForError(), HttpStatus.NOT_FOUND);
+        }
+
+        try {
+            orderService.updateOrderStatus(id, "PAID");
+
+            DiningTable table = order.getDiningTable();
+            if (table != null) {
+                table.setStatus("FREE"); // khớp với frontend (FREE thay vì AVAILABLE)
+                tableRepository.save(table);
+            }
+
+            // Tạo bill trả về để FE in
+            Map<String, Object> bill = new LinkedHashMap<>();
+            bill.put("orderId", order.getId());
+            bill.put("tableNumber", table != null ? table.getNumber() : "N/A"); // getNumber() đúng với entity
+            bill.put("customerName", order.getCustomerName() != null ? order.getCustomerName() : "Khách lẻ");
+            bill.put("orderedDate", order.getOrderedDate().toString());
+
+            List<Map<String, Object>> billItems = new ArrayList<>();
+            for (Item item : order.getItems()) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("productName", item.getProduct().getProductName());
+                row.put("quantity", item.getQuantity());
+                row.put("price", item.getProduct().getPrice());
+                row.put("subtotal", item.getSubTotal());
+                billItems.add(row);
+            }
+            bill.put("items", billItems);
+            bill.put("total", order.getTotal());
+            bill.put("status", "PAID");
+
+            return new ResponseEntity<>(bill, HttpStatus.OK);
 
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -199,8 +268,7 @@ public class OrderController {
 
     // ==========================================
     // PUT /order/{id}/payment-status
-    // Được gọi nội bộ bởi Payment Service (Feign Client)
-    // Param: status (PAID | PAYMENT_FAILED | REFUNDED)
+    // Gọi nội bộ bởi Payment Service
     // ==========================================
     @PutMapping(value = "/order/{id}/payment-status")
     public ResponseEntity<Order> updatePaymentStatus(
@@ -234,7 +302,7 @@ public class OrderController {
     }
 
     // ==========================================
-    // Helper
+    // Helpers
     // ==========================================
     private Order createOrder(List<Item> cart, User user) {
         Order order = new Order();
@@ -244,5 +312,29 @@ public class OrderController {
         order.setOrderedDate(LocalDate.now());
         order.setStatus("PAYMENT_EXPECTED");
         return order;
+    }
+
+    private List<Item> parseCartItems(List<Map<String, Object>> cartItems) {
+        List<Item> items = new ArrayList<>();
+        for (Map<String, Object> cartItem : cartItems) {
+            Product product = new Product();
+
+            Object pidObj = cartItem.get("productId");
+            if (pidObj != null)
+                product.setId(Long.parseLong(pidObj.toString()));
+
+            Object nameObj = cartItem.get("productName");
+            product.setProductName(nameObj != null ? nameObj.toString() : "");
+
+            Object priceObj = cartItem.get("price");
+            BigDecimal price = priceObj != null ? new BigDecimal(priceObj.toString()) : BigDecimal.ZERO;
+            product.setPrice(price);
+
+            Object qtyObj = cartItem.get("quantity");
+            int qty = qtyObj != null ? Integer.parseInt(qtyObj.toString()) : 1;
+
+            items.add(new Item(qty, product, price.multiply(BigDecimal.valueOf(qty))));
+        }
+        return items;
     }
 }

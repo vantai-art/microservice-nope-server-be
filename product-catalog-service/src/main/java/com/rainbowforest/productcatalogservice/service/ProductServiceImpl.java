@@ -53,6 +53,8 @@ public class ProductServiceImpl implements ProductService {
             existing.setCategory(newData.getCategory());
         if (newData.getAvailability() > 0)
             existing.setAvailability(newData.getAvailability());
+        // Cho phép xóa ảnh bằng cách set imageUrl = "" hoặc null
+        existing.setImageUrl(newData.getImageUrl());
         return productRepository.save(existing);
     }
 

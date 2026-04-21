@@ -37,33 +37,17 @@ public class CorsConfig {
         @Bean
         public CorsWebFilter corsWebFilter() {
                 CorsConfiguration config = new CorsConfiguration();
-
-                // ✅ Chỉ định origin cụ thể (bắt buộc khi dùng credentials)
                 config.setAllowedOrigins(ALLOWED_ORIGINS);
-
-                // ✅ Cho phép tất cả HTTP methods
-                config.setAllowedMethods(Arrays.asList(
-                                "GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-
-                // ✅ Cho phép tất cả headers
-                config.setAllowedHeaders(Arrays.asList(
-                                "Authorization",
-                                "Content-Type",
-                                "Accept",
-                                "Origin",
-                                "X-Requested-With",
-                                "Access-Control-Request-Method",
-                                "Access-Control-Request-Headers"));
-
-                // ✅ Cho phép gửi cookie/session (bắt buộc để session hoạt động)
+                config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+                config.setAllowedHeaders(Arrays.asList("*"));
                 config.setAllowCredentials(true);
-
-                // Cache preflight OPTIONS request trong 1 giờ
                 config.setMaxAge(3600L);
+
+                // Quan trọng: không để lộ header Access-Control-Allow-Origin từ upstream
+                config.setExposedHeaders(Arrays.asList()); // hoặc không set
 
                 UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
                 source.registerCorsConfiguration("/**", config);
-
                 return new CorsWebFilter(source);
         }
 }
