@@ -2,15 +2,17 @@ package com.rainbowforest.productcatalogservice.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * Cấu hình serve static files (ảnh upload) và CORS.
+ * Cấu hình serve static files (ảnh upload).
  *
  * Ảnh lưu tại: ./uploads/products/
  * Truy cập qua: http://localhost:8810/images/products/{filename}
+ *
+ * NOTE: CORS được xử lý tập trung tại API Gateway (CorsConfig.java).
+ * KHÔNG cấu hình CORS ở đây để tránh duplicate header.
  */
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
@@ -24,7 +26,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
      */
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // Đảm bảo path kết thúc bằng /
         String resourceLocation = "file:" + uploadDir.replace("\\", "/");
         if (!resourceLocation.endsWith("/")) {
             resourceLocation += "/";
@@ -32,20 +33,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
         registry.addResourceHandler("/images/**")
                 .addResourceLocations(resourceLocation)
-                .setCachePeriod(3600); // cache 1 giờ
+                .setCachePeriod(3600);
     }
 
-    /**
-     * CORS cho product-catalog-service
-     * (Gateway ở port 8080 cũng cần cấu hình CORS cho /admin/products/{id}/image)
-     */
-    @Override
-    public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/**")
-                .allowedOriginPatterns("*")
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                .allowedHeaders("*")
-                .allowCredentials(false)
-                .maxAge(3600);
-    }
+    // ❌ KHÔNG override addCorsMappings() — CORS do API Gateway xử lý
 }
