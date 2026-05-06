@@ -2,6 +2,7 @@ package com.rainbowforest.orderservice.domain;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
+import java.time.LocalDateTime;
 
 /**
  * Entity bàn - dùng field "number" và status "FREE"/"OCCUPIED"/"RESERVED"
@@ -42,6 +43,27 @@ public class DiningTable {
     @Column(name = "note")
     private String note;
 
+    /**
+     * Key định danh dạng string: "table_1", "table_2"
+     * Dùng để frontend nhận diện bàn qua socket/store
+     */
+    @Column(name = "table_key", unique = true)
+    private String tableKey;
+
+    /**
+     * QR token (HMAC-signed) để khách scan vào đặt món
+     */
+    @Column(name = "qr_token", length = 512)
+    private String qrToken;
+
+    /**
+     * Thời gian hết hạn của QR token
+     */
+    @Column(name = "qr_expires_at")
+    private LocalDateTime qrExpiresAt;
+
+    // ── Constructors ────────────────────────────────────────────────
+
     public DiningTable() {
     }
 
@@ -49,9 +71,11 @@ public class DiningTable {
         this.number = number;
         this.capacity = capacity;
         this.status = "FREE";
+        this.tableKey = "table_" + number;
     }
 
-    // --- Getters & Setters ---
+    // ── Getters & Setters ───────────────────────────────────────────
+
     public Long getId() {
         return id;
     }
@@ -90,5 +114,29 @@ public class DiningTable {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public String getTableKey() {
+        return tableKey;
+    }
+
+    public void setTableKey(String tableKey) {
+        this.tableKey = tableKey;
+    }
+
+    public String getQrToken() {
+        return qrToken;
+    }
+
+    public void setQrToken(String qrToken) {
+        this.qrToken = qrToken;
+    }
+
+    public LocalDateTime getQrExpiresAt() {
+        return qrExpiresAt;
+    }
+
+    public void setQrExpiresAt(LocalDateTime qrExpiresAt) {
+        this.qrExpiresAt = qrExpiresAt;
     }
 }

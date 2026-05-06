@@ -30,9 +30,15 @@ public class DiningTableServiceImpl implements DiningTableService {
 
     @Override
     public DiningTable createTable(DiningTable table) {
-        // Đảm bảo status mặc định là FREE
         if (table.getStatus() == null || table.getStatus().isBlank()) {
             table.setStatus("FREE");
+        }
+        // Auto tạo tableKey từ number nếu chưa có
+        if (table.getTableKey() == null || table.getTableKey().isBlank()) {
+            String key = table.getNumber() != null
+                    ? "table_" + table.getNumber()
+                    : "table_" + System.currentTimeMillis();
+            table.setTableKey(key);
         }
         return tableRepository.save(table);
     }
@@ -46,11 +52,13 @@ public class DiningTableServiceImpl implements DiningTableService {
             existing.setNumber(payload.getNumber());
         if (payload.getCapacity() != null)
             existing.setCapacity(payload.getCapacity());
-        if (payload.getStatus() != null && !payload.getStatus().isBlank()) {
+        if (payload.getStatus() != null && !payload.getStatus().isBlank())
             existing.setStatus(payload.getStatus().toUpperCase());
-        }
         if (payload.getNote() != null)
             existing.setNote(payload.getNote());
+        // Cập nhật tableKey nếu number thay đổi
+        if (payload.getNumber() != null)
+            existing.setTableKey("table_" + payload.getNumber());
 
         return tableRepository.save(existing);
     }
@@ -65,9 +73,8 @@ public class DiningTableServiceImpl implements DiningTableService {
 
     @Override
     public void deleteTable(Long tableId) {
-        if (!tableRepository.existsById(tableId)) {
+        if (!tableRepository.existsById(tableId))
             throw new RuntimeException("Không tìm thấy bàn ID: " + tableId);
-        }
         tableRepository.deleteById(tableId);
     }
 }

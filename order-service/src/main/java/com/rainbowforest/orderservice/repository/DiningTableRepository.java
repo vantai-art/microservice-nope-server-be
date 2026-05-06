@@ -9,8 +9,9 @@ import java.util.Optional;
 
 @Repository
 public interface DiningTableRepository extends JpaRepository<DiningTable, Long> {
-
     Optional<DiningTable> findByNumber(Integer number);
 
     List<DiningTable> findByStatus(String status);
+
+    Optional<DiningTable> findByTableKey(String tableKey); // ← dòng này có chưa?
 }

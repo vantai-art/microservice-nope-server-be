@@ -2,31 +2,29 @@ package com.rainbowforest.orderservice.controller;
 
 import com.rainbowforest.orderservice.domain.DiningTable;
 import com.rainbowforest.orderservice.service.DiningTableService;
+import com.rainbowforest.orderservice.service.QRService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * REST API quản lý bàn.
- *
- * GET /tables → tất cả bàn
- * GET /tables/available → bàn đang trống (status=FREE)
- * GET /tables/{id} → 1 bàn
- * POST /tables → tạo bàn mới { number, capacity, note? }
- * PUT /tables/{id} → sửa toàn bộ bàn (dùng bởi StaffPage khi đổi OCCUPIED/FREE)
- * PUT /tables/{id}/status → chỉ đổi trạng thái { status: "FREE" }
- * DELETE /tables/{id} → xóa bàn
- */
 @RestController
 @RequestMapping("/tables")
 public class DiningTableController {
 
     @Autowired
     private DiningTableService tableService;
+
+    @Autowired
+    private QRService qrService;
+
+    @Autowired
+    private SimpMessagingTemplate ws;
 
     // ─────────────────────────────────────────────
     // GET /tables
@@ -41,7 +39,7 @@ public class DiningTableController {
     }
 
     // ─────────────────────────────────────────────
-    // GET /tables/available → bàn FREE
+    // GET /tables/available
     // ─────────────────────────────────────────────
     @GetMapping("/available")
     public ResponseEntity<List<DiningTable>> getAvailableTables() {
@@ -75,8 +73,6 @@ public class DiningTableController {
 
     // ─────────────────────────────────────────────
     // PUT /tables/{id}
-    // StaffPage gọi cái này để cập nhật toàn bộ bàn
-    // Body: { "number": 3, "capacity": 4, "status": "OCCUPIED" }
     // ─────────────────────────────────────────────
     @PutMapping("/{id}")
     public ResponseEntity<DiningTable> updateTable(
@@ -84,6 +80,9 @@ public class DiningTableController {
             @RequestBody DiningTable payload) {
         try {
             DiningTable updated = tableService.updateTable(id, payload);
+            // Broadcast real-time khi bàn thay đổi
+            ws.convertAndSend("/topic/table/" + id,
+                    Map.of("type", "table:updated", "tableId", id, "data", updated));
             return ResponseEntity.ok(updated);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
@@ -92,7 +91,6 @@ public class DiningTableController {
 
     // ─────────────────────────────────────────────
     // PUT /tables/{id}/status
-    // AdminTable gọi khi chỉ đổi trạng thái
     // Body: { "status": "FREE" }
     // ─────────────────────────────────────────────
     @PutMapping("/{id}/status")
@@ -112,6 +110,9 @@ public class DiningTableController {
 
         try {
             DiningTable updated = tableService.updateTableStatus(id, s);
+            // Broadcast real-time
+            ws.convertAndSend("/topic/table/" + id,
+                    Map.of("type", "table:status_changed", "tableId", id, "data", updated));
             return ResponseEntity.ok(updated);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
@@ -128,6 +129,37 @@ public class DiningTableController {
             return ResponseEntity.ok().build();
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // GET /tables/{id}/qr → tạo QR URL cho bàn
+    // ─────────────────────────────────────────────
+    @GetMapping("/{id}/qr")
+    public ResponseEntity<Map<String, String>> getQRCode(@PathVariable Long id) {
+        try {
+            String qrUrl = qrService.generateQRUrl(id);
+            Map<String, String> result = new HashMap<>();
+            result.put("qrUrl", qrUrl);
+            return ResponseEntity.ok(result);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // GET /tables/qr/{token} → khách scan QR → lấy info bàn
+    // ─────────────────────────────────────────────
+    @GetMapping("/qr/{token}")
+    public ResponseEntity<DiningTable> resolveQR(@PathVariable String token) {
+        try {
+            DiningTable table = qrService.resolveTable(token);
+            return ResponseEntity.ok(table);
+        } catch (IllegalStateException e) {
+            // QR hết hạn → 410 Gone
+            return ResponseEntity.status(410).build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
         }
     }
 }

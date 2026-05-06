@@ -7,8 +7,8 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;import java.util.*;
-import java.util.TimeZone;
+import java.text.SimpleDateFormat;
+import java.util.*;
 
 @Component
 public class VNPayConfig {
@@ -57,12 +57,6 @@ public class VNPayConfig {
 
     /**
      * Tạo URL thanh toán VNPay.
-     *
-     * @param orderId       ID đơn hàng nội bộ
-     * @param amount        Số tiền (VND, không có phần thập phân)
-     * @param orderInfo     Mô tả đơn hàng (VD: "Thanh toan don hang #5")
-     * @param clientIp      IP người dùng
-     * @param transactionId mã giao dịch nội bộ (lưu vào vnp_TxnRef)
      */
     public String buildPaymentUrl(Long orderId, long amount, String orderInfo,
             String clientIp, String transactionId) {
@@ -71,7 +65,6 @@ public class VNPayConfig {
         params.put("vnp_Version", "2.1.0");
         params.put("vnp_Command", "pay");
         params.put("vnp_TmnCode", tmnCode);
-        // VNPay nhân thêm 100 (35000đ → "3500000")
         params.put("vnp_Amount", String.valueOf(amount * 100));
         params.put("vnp_CurrCode", "VND");
         params.put("vnp_TxnRef", transactionId);
@@ -80,16 +73,15 @@ public class VNPayConfig {
         params.put("vnp_Locale", "vn");
         params.put("vnp_ReturnUrl", returnUrl);
         params.put("vnp_IpAddr", clientIp);
-        // QUAN TRỌNG: VNPay yêu cầu thời gian theo múi giờ Asia/Ho_Chi_Minh (GMT+7)
+
         SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmss");
         sdf.setTimeZone(TimeZone.getTimeZone("Asia/Ho_Chi_Minh"));
         Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("Asia/Ho_Chi_Minh"));
         params.put("vnp_CreateDate", sdf.format(cal.getTime()));
-        // Thêm thời hạn thanh toán: 15 phút kể từ khi tạo
         cal.add(Calendar.MINUTE, 15);
         params.put("vnp_ExpireDate", sdf.format(cal.getTime()));
 
-        // Build query string
+        // Build query string và hashData
         StringBuilder query = new StringBuilder();
         StringBuilder hashData = new StringBuilder();
         for (Map.Entry<String, String> e : params.entrySet()) {
@@ -100,6 +92,7 @@ public class VNPayConfig {
                 hashData.append("&");
             }
             query.append(encodedKey).append("=").append(encodedValue);
+            // hashData dùng key gốc + value đã encode (chuẩn VNPay)
             hashData.append(e.getKey()).append("=").append(encodedValue);
         }
 
@@ -111,33 +104,54 @@ public class VNPayConfig {
 
     /**
      * Xác minh chữ ký VNPay trả về.
-     * Lấy tất cả params (trừ vnp_SecureHash), sort, HMAC-SHA512 rồi so sánh.
+     *
+     * FIX: Spring MVC đã tự decode query params trước khi vào method.
+     * VNPay tính hash trên giá trị URL-encoded → cần encode lại từng value
+     * theo đúng chuẩn VNPay (UTF-8 encode, dùng %20 thay space).
+     *
+     * Quy trình đúng:
+     * 1. Lọc bỏ vnp_SecureHash, vnp_SecureHashType
+     * 2. Sort theo key alphabet (TreeMap)
+     * 3. Encode từng value bằng UTF-8 (VNPay dùng UTF-8, không phải US-ASCII)
+     * 4. Build hashData: key=encodedValue&...
+     * 5. HMAC-SHA512 → so sánh với vnp_SecureHash nhận được
      */
     public boolean verifyReturnSignature(Map<String, String> params) {
         String receivedHash = params.get("vnp_SecureHash");
         if (receivedHash == null)
             return false;
 
+        // Dùng TreeMap để sort key theo alphabet tự động
         Map<String, String> filtered = new TreeMap<>();
         for (Map.Entry<String, String> e : params.entrySet()) {
-            if (!e.getKey().equals("vnp_SecureHash") && !e.getKey().equals("vnp_SecureHashType")) {
-                filtered.put(e.getKey(), e.getValue());
+            String key = e.getKey();
+            if (!key.equals("vnp_SecureHash") && !key.equals("vnp_SecureHashType")) {
+                filtered.put(key, e.getValue());
             }
         }
 
-        // ⚠️ QUAN TRỌNG: VNPay gửi callback với giá trị RAW (không encode).
-        // Khi build chuỗi hashData để verify, phải dùng giá trị GỐC — KHÔNG encode.
-        // Encode ở đây sẽ khiến chữ ký tính ra khác VNPay → mọi giao dịch đều "sai chữ
-        // ký".
+        // Build hashData: encode value bằng UTF-8 (chuẩn VNPay sandbox)
         StringBuilder hashData = new StringBuilder();
         for (Map.Entry<String, String> e : filtered.entrySet()) {
             if (hashData.length() > 0)
                 hashData.append("&");
-            hashData.append(e.getKey()).append("=").append(e.getValue());
+            String encodedValue = URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8);
+            hashData.append(e.getKey()).append("=").append(encodedValue);
         }
 
         String computedHash = hmacSHA512(hashSecret, hashData.toString());
-        return computedHash.equalsIgnoreCase(receivedHash);
+        boolean valid = computedHash.equalsIgnoreCase(receivedHash);
+
+        if (!valid) {
+            org.slf4j.LoggerFactory.getLogger(VNPayConfig.class)
+                    .error("VNPay verify FAILED.\nHashData: {}\nComputed:  {}\nReceived:  {}",
+                            hashData, computedHash, receivedHash);
+        } else {
+            org.slf4j.LoggerFactory.getLogger(VNPayConfig.class)
+                    .info("VNPay verify OK: txnRef={}", params.get("vnp_TxnRef"));
+        }
+
+        return valid;
     }
 
     // ── HMAC-SHA512 ──────────────────────────────────────────────

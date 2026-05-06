@@ -10,15 +10,14 @@ import java.util.List;
 @Table(name = "products")
 public class Product {
 
-    /**
-     * FIX: @GeneratedValue bỏ strategy IDENTITY → dùng GenerationType.AUTO
-     * với @Column(name = "id")
-     * ID được gửi từ frontend (lấy từ product-catalog-service), không tự sinh.
-     * Dùng TABLE hoặc bỏ hẳn @GeneratedValue để Hibernate không override id đã set.
-     */
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
     private Long id;
+
+    // product_id = id từ product-catalog-service, lưu riêng để tra cứu
+    @Column(name = "product_id", unique = true)
+    private Long productId;
 
     @Column(name = "product_name")
     @NotNull
@@ -41,6 +40,14 @@ public class Product {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public Long getProductId() {
+        return productId;
+    }
+
+    public void setProductId(Long productId) {
+        this.productId = productId;
     }
 
     public String getProductName() {

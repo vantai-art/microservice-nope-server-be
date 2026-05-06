@@ -24,12 +24,16 @@ public class Item {
     private BigDecimal subTotal;
 
     /**
-     * FIX: CascadeType.ALL → PERSIST+MERGE
-     * CascadeType.ALL khiến Hibernate cố INSERT product vào bảng products
-     * mỗi lần tạo order → Duplicate key exception → 500.
-     * PERSIST+MERGE: chỉ upsert, không INSERT trùng.
+     * FIX: Bỏ HOÀN TOÀN cascade trên Product.
+     *
+     * Lý do lỗi 500 /order/{id}/direct:
+     *   cascade PERSIST+MERGE → Hibernate cố INSERT/MERGE Product vào orders_db.products
+     *   Nếu cùng productId đã tồn tại từ đơn hàng trước → "Duplicate entry for PRIMARY KEY" → 500.
+     *
+     * Giải pháp: Controller dùng ProductRepository.findById() + save() thủ công (upsert)
+     *   trước khi tạo Item. Item chỉ tham chiếu Product đã có trong DB, không tự cascade.
      */
-    @ManyToOne(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "product_id")
     private Product product;
 
